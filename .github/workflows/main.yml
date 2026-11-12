@@ -14,7 +14,7 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout project
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Java 17
@@ -28,19 +28,71 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Find Android Project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ROOT="$GITHUB_WORKSPACE"
+
+          SETTINGS=$(find "$ROOT" -type f \
+            \( -name settings.gradle \
+            -o -name settings.gradle.kts \) \
+            -print -quit)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "Searching ZIP files..."
+
+            mkdir -p "$RUNNER_TEMP/ios27"
+
+            while IFS= read -r -d '' ZIP; do
+              unzip -oq "$ZIP" \
+                -d "$RUNNER_TEMP/ios27"
+
+              SETTINGS=$(find "$RUNNER_TEMP/ios27" \
+                -type f \
+                \( -name settings.gradle \
+                -o -name settings.gradle.kts \) \
+                -print -quit)
+
+              if [ -n "$SETTINGS" ]; then
+                break
+              fi
+            done < <(find "$ROOT" \
+              -type f -iname '*.zip' -print0)
+          fi
+
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::Android project not found. Upload the complete iOS27 project ZIP."
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "PROJECT_DIR=$PROJECT_DIR" \
+            >> "$GITHUB_ENV"
+
+          echo "Found project: $PROJECT_DIR"
+
       - name: Check Android SDK
         run: |
-          echo "Android SDK: $ANDROID_HOME"
+          echo "$ANDROID_HOME"
           test -d "$ANDROID_HOME/platforms/android-35"
           test -d "$ANDROID_HOME/build-tools/35.0.0"
 
-      - name: Build Android APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build APK
+        shell: bash
+        run: |
+          gradle -p "$PROJECT_DIR" \
+            --no-daemon \
+            --stacktrace \
+            assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: IOS27-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 30
           
