@@ -1,5 +1,5 @@
 
-name: Build iOS 27 Liquid Glass APK
+name: Build iOS 27 Liquid Glass Boot Fix APK
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Project
         uses: actions/checkout@v4
 
       - name: Setup Java 17
@@ -30,34 +30,37 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Extract Exact Project ZIP
+      - name: Extract Fixed Project
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          ZIP="$GITHUB_WORKSPACE/IOS27-Liquid-Glass-Fixed-Project.zip"
+          ZIP="$GITHUB_WORKSPACE/IOS27-Liquid-Glass-Boot-Fixed-Project.zip"
 
-          if [ ! -f "$ZIP" ]; then
-            echo "::error::ZIP file not found: IOS27-Liquid-Glass-Fixed-Project.zip"
-            ls -la "$GITHUB_WORKSPACE"
-            exit 1
+          if [ -f "$GITHUB_WORKSPACE/settings.gradle" ]; then
+            PROJECT="$GITHUB_WORKSPACE"
+          else
+            if [ ! -f "$ZIP" ]; then
+              echo "::error::Project ZIP not found"
+              exit 1
+            fi
+
+            PROJECT="$RUNNER_TEMP/ios27"
+            mkdir -p "$PROJECT"
+            unzip -oq "$ZIP" -d "$PROJECT"
           fi
 
-          mkdir -p "$RUNNER_TEMP/ios27-project"
+          test -f "$PROJECT/settings.gradle"
+          test -f "$PROJECT/app/build.gradle"
 
-          unzip -oq "$ZIP" -d "$RUNNER_TEMP/ios27-project"
+          echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
 
-          test -f "$RUNNER_TEMP/ios27-project/settings.gradle"
-          test -f "$RUNNER_TEMP/ios27-project/app/build.gradle"
-
-          echo "PROJECT_DIR=$RUNNER_TEMP/ios27-project" >> "$GITHUB_ENV"
-
-      - name: Check Android SDK
+      - name: Verify Android SDK
         run: |
           test -d "$ANDROID_HOME/platforms/android-35"
           test -d "$ANDROID_HOME/build-tools/35.0.0"
 
-      - name: Build iOS 27 APK
+      - name: Build APK
         run: |
           gradle -p "$PROJECT_DIR" \
             --no-daemon \
@@ -68,12 +71,11 @@ jobs:
         run: |
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          echo "APK successfully generated"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: IOS27-Liquid-Glass-APK
+          name: IOS27-Liquid-Glass-Boot-Fixed-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
