@@ -1,10 +1,12 @@
 
-name: Build iOS 27 APK
+name: Build iOS 27 Liquid Glass APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
 
 jobs:
   build:
@@ -28,70 +30,50 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Find Android Project
+      - name: Extract Exact Project ZIP
         shell: bash
         run: |
-          set -euo pipefail
+          set -e
 
-          ROOT="$GITHUB_WORKSPACE"
+          ZIP="$GITHUB_WORKSPACE/IOS27-Liquid-Glass-Fixed-Project.zip"
 
-          SETTINGS=$(find "$ROOT" -type f \
-            \( -name settings.gradle \
-            -o -name settings.gradle.kts \) \
-            -print -quit)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "Searching ZIP files..."
-
-            mkdir -p "$RUNNER_TEMP/ios27"
-
-            while IFS= read -r -d '' ZIP; do
-              unzip -oq "$ZIP" \
-                -d "$RUNNER_TEMP/ios27"
-
-              SETTINGS=$(find "$RUNNER_TEMP/ios27" \
-                -type f \
-                \( -name settings.gradle \
-                -o -name settings.gradle.kts \) \
-                -print -quit)
-
-              if [ -n "$SETTINGS" ]; then
-                break
-              fi
-            done < <(find "$ROOT" \
-              -type f -iname '*.zip' -print0)
-          fi
-
-          if [ -z "$SETTINGS" ]; then
-            echo "::error::Android project not found. Upload the complete iOS27 project ZIP."
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::ZIP file not found: IOS27-Liquid-Glass-Fixed-Project.zip"
+            ls -la "$GITHUB_WORKSPACE"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$SETTINGS")
+          mkdir -p "$RUNNER_TEMP/ios27-project"
 
-          echo "PROJECT_DIR=$PROJECT_DIR" \
-            >> "$GITHUB_ENV"
+          unzip -oq "$ZIP" -d "$RUNNER_TEMP/ios27-project"
 
-          echo "Found project: $PROJECT_DIR"
+          test -f "$RUNNER_TEMP/ios27-project/settings.gradle"
+          test -f "$RUNNER_TEMP/ios27-project/app/build.gradle"
+
+          echo "PROJECT_DIR=$RUNNER_TEMP/ios27-project" >> "$GITHUB_ENV"
 
       - name: Check Android SDK
         run: |
-          echo "$ANDROID_HOME"
           test -d "$ANDROID_HOME/platforms/android-35"
           test -d "$ANDROID_HOME/build-tools/35.0.0"
 
-      - name: Build APK
-        shell: bash
+      - name: Build iOS 27 APK
         run: |
           gradle -p "$PROJECT_DIR" \
             --no-daemon \
             --stacktrace \
             assembleDebug
 
+      - name: Verify APK
+        run: |
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          echo "APK successfully generated"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: IOS27-APK
+          name: IOS27-Liquid-Glass-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
